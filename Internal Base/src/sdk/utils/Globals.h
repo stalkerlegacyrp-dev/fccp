@@ -16,6 +16,12 @@ namespace Globals
     inline bool esp_enabled = true;
     inline int  esp_bind = VK_F1;
 
+    // When the game's aspect ratio differs from the back buffer (e.g.
+    // 4:3 letterboxed in a 16:9 monitor), the rendered image is
+    // pillarboxed and ESP would project past the visible viewport.
+    // Disable this if you play on stretched 4:3.
+    inline bool esp_aspect_correct = true;
+
     inline bool esp_box = true;
     inline float esp_box_color[4] = { 1.f, 0.f, 0.f, 1.f };
     inline float esp_box_thickness = 1.5f;

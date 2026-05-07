@@ -27,6 +27,15 @@
     <ClCompile Include="src\feature\combat\legitbot\Aimbot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\feature\combat\legitbot\Triggerbot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\feature\combat\legitbot\RCS.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\feature\combat\Combat.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\menu\Menu.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -99,6 +108,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\feature\combat\legitbot\Aimbot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\feature\combat\legitbot\Triggerbot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\feature\combat\legitbot\RCS.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\feature\combat\Combat.h">
