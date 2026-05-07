@@ -4,6 +4,7 @@
 
 #include "Menu.h"
 #include "../../ext/imgui/imgui.h"
+#include "../../ext/iconfont/IconsFontAwesome6.h"
 #include "../sdk/utils/Globals.h"
 #include <Windows.h>
 #include <cstdio>
@@ -361,15 +362,15 @@ static void DrawSideItem(const SideItem& it)
 static void RenderSidebar()
 {
     DrawSideHeader("Aimbot");
-    DrawSideItem({ 0, "[B]", "Legit Bot" });
+    DrawSideItem({ 0, ICON_FA_CROSSHAIRS, "Legit Bot" });
 
     DrawSideHeader("Visuals");
-    DrawSideItem({ 1, "[P]", "Players" });
-    DrawSideItem({ 2, "[V]", "View" });
+    DrawSideItem({ 1, ICON_FA_USERS, "Players" });
+    DrawSideItem({ 2, ICON_FA_EYE,   "View" });
 
     DrawSideHeader("Miscellaneous");
-    DrawSideItem({ 3, "[M]", "Main" });
-    DrawSideItem({ 4, "[C]", "Configs" });
+    DrawSideItem({ 3, ICON_FA_HOUSE,       "Main" });
+    DrawSideItem({ 4, ICON_FA_FLOPPY_DISK, "Configs" });
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +403,7 @@ static void RenderAimbotCard(ImVec2 size)
 {
     BeginCard("##aim_card", size);
 
-    W::SectionTitle("Aimbot");
+    W::SectionTitle(ICON_FA_CROSSHAIRS "  Aimbot");
 
     // Enable + bind chip on the right
     ImGui::BeginGroup();
@@ -440,7 +441,7 @@ static void RenderTriggerRcsCard(ImVec2 size)
 {
     BeginCard("##trig_card", size);
 
-    W::SectionTitle("Triggerbot");
+    W::SectionTitle(ICON_FA_HAND "  Triggerbot");
 
     W::Checkbox("Enable Triggerbot", &Globals::trigger_enabled);
     {
@@ -517,7 +518,7 @@ static void RenderEspCard(ImVec2 size)
 {
     BeginCard("##esp_card", size);
 
-    W::SectionTitle("Player ESP");
+    W::SectionTitle(ICON_FA_USERS "  Player ESP");
 
     // Enable + key bind chip
     W::Checkbox("Enable ESP", &Globals::esp_enabled);
@@ -545,7 +546,7 @@ static void RenderHudCard(ImVec2 size)
 {
     BeginCard("##hud_card", size);
 
-    W::SectionTitle("HUD");
+    W::SectionTitle(ICON_FA_EYE "  HUD");
 
     W::Checkbox("Enemy counter", &Globals::hud_enemy_counter);
 
