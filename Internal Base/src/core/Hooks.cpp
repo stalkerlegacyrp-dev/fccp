@@ -14,6 +14,7 @@
 #include "../../src/sdk/memory/Offsets.h"
 #include "../../src/sdk/memory/PatternScan.h"
 #include "../feature/misc/Misc.h"
+#include "../feature/combat/Combat.h"
 
 #pragma comment(lib, "d3d11.lib")
 
@@ -118,6 +119,15 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
             ClipCursor(nullptr);
     }
 
+    {
+        DXGI_SWAP_CHAIN_DESC sd{};
+        if (SUCCEEDED(swapChain->GetDesc(&sd)))
+        {
+            Globals::ScreenWidth = (int)sd.BufferDesc.Width;
+            Globals::ScreenHeight = (int)sd.BufferDesc.Height;
+        }
+    }
+
     EntityManager::Get().Update();
 
     uintptr_t client = Memory::GetModuleBase("client.dll");
@@ -126,6 +136,8 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
         (void*)(client + Offsets::dwViewMatrix),
         sizeof(Globals::ViewMatrix)
     );
+
+    Combat::Run();
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -139,6 +151,7 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
 
     Visuals::Render();
 	Misc::Render();
+    Combat::Render();
 
     ImGui::Render();
     g_Context->OMSetRenderTargets(1, &g_RTV, nullptr);

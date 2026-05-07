@@ -179,6 +179,74 @@ namespace Utils
         return true;
     }
 
+    // Reads the rendered viewport rectangle out of the canvas, given the
+    // game's view*proj matrix. The game's projection is built for a
+    // particular aspect ratio; if the canvas (back buffer) has a different
+    // aspect, the rendered image is letterbox/pillarbox-centered. This
+    // returns the inner (rendered) rect so screen-space drawing can land
+    // on top of the actual rendered image.
+    inline void ComputeViewportRect(
+        const float* m,
+        float canvasW, float canvasH,
+        float& vpX, float& vpY, float& vpW, float& vpH)
+    {
+        vpX = 0.f; vpY = 0.f;
+        vpW = canvasW; vpH = canvasH;
+        if (canvasW < 1.f || canvasH < 1.f) return;
+
+        float xrow = std::sqrt(m[0] * m[0] + m[1] * m[1] + m[2] * m[2]);
+        float yrow = std::sqrt(m[4] * m[4] + m[5] * m[5] + m[6] * m[6]);
+        if (xrow < 1e-4f) return;
+
+        float game_aspect = yrow / xrow;
+        float canvas_aspect = canvasW / canvasH;
+
+        if (canvas_aspect > game_aspect + 1e-3f)
+        {
+            // Game is narrower than the canvas (pillarbox).
+            vpW = canvasH * game_aspect;
+            vpX = (canvasW - vpW) * 0.5f;
+        }
+        else if (canvas_aspect + 1e-3f < game_aspect)
+        {
+            // Game is wider than the canvas (letterbox).
+            vpH = canvasW / game_aspect;
+            vpY = (canvasH - vpH) * 0.5f;
+        }
+    }
+
+    inline bool WorldToScreenViewport(
+        const Vector& world, Vector& screen, const float* m,
+        float vpX, float vpY, float vpW, float vpH)
+    {
+        float w = m[12] * world.x + m[13] * world.y + m[14] * world.z + m[15];
+        if (w < 0.01f) return false;
+
+        float x = m[0] * world.x + m[1] * world.y + m[2] * world.z + m[3];
+        float y = m[4] * world.x + m[5] * world.y + m[6] * world.z + m[7];
+
+        float inv = 1.f / w;
+        x *= inv;
+        y *= inv;
+
+        screen.x = vpX + vpW * 0.5f * (1.f + x);
+        screen.y = vpY + vpH * 0.5f * (1.f - y);
+        screen.z = 0.f;
+        return true;
+    }
+
+    // Convenience wrapper: derives the viewport rect from the matrix's
+    // baked-in aspect and projects accordingly. Use this for ESP/aimbot
+    // drawing so the overlay aligns with letterboxed/pillarboxed games.
+    inline bool WorldToScreenLetterbox(
+        const Vector& world, Vector& screen, const float* m,
+        float canvasW, float canvasH)
+    {
+        float vpX, vpY, vpW, vpH;
+        ComputeViewportRect(m, canvasW, canvasH, vpX, vpY, vpW, vpH);
+        return WorldToScreenViewport(world, screen, m, vpX, vpY, vpW, vpH);
+    }
+
     inline Vector GetBonePos(C_CSPlayerPawn* pawn, BoneID boneID)
     {
         if (!pawn)

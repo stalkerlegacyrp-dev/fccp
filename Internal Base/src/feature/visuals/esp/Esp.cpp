@@ -11,8 +11,17 @@ void ESP::Render()
         return;
 
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
-    const float sw = ImGui::GetIO().DisplaySize.x;
-    const float sh = ImGui::GetIO().DisplaySize.y;
+    float sw = (float)Globals::ScreenWidth;
+    float sh = (float)Globals::ScreenHeight;
+    if (sw < 1.f) sw = ImGui::GetIO().DisplaySize.x;
+    if (sh < 1.f) sh = ImGui::GetIO().DisplaySize.y;
+    if (sw < 1.f || sh < 1.f) return;
+
+    auto W2S = [&](const Vector& world, Vector& out) -> bool {
+        if (Globals::esp_aspect_correct)
+            return Utils::WorldToScreenLetterbox(world, out, (float*)Globals::ViewMatrix, sw, sh);
+        return Utils::WorldToScreen(world, out, (float*)Globals::ViewMatrix, sw, sh);
+    };
 
     const auto& entities = EntityManager::Get().GetEntities();
     C_CSPlayerPawn* localPawn = EntityManager::Get().GetLocalPawn();
@@ -49,8 +58,8 @@ void ESP::Render()
         head.z += 8.2f;
 
         Vector sFeet, sHead;
-        if (!Utils::WorldToScreen(feet, sFeet, (float*)Globals::ViewMatrix, sw, sh) ||
-            !Utils::WorldToScreen(head, sHead, (float*)Globals::ViewMatrix, sw, sh))
+        if (!W2S(feet, sFeet) ||
+            !W2S(head, sHead))
             continue;
 
         float h = sFeet.y - sHead.y;
@@ -100,8 +109,8 @@ void ESP::Render()
                     continue;
 
                 Vector sb1, sb2;
-                if (Utils::WorldToScreen(b1, sb1, (float*)Globals::ViewMatrix, sw, sh) &&
-                    Utils::WorldToScreen(b2, sb2, (float*)Globals::ViewMatrix, sw, sh))
+                if (W2S(b1, sb1) &&
+                    W2S(b2, sb2))
                 {
                     dl->AddLine({ sb1.x, sb1.y }, { sb2.x, sb2.y }, skelCol, thick);
                 }
