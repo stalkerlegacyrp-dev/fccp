@@ -4,6 +4,8 @@
 #include "../../ext/imgui/imgui_impl_win32.h"
 #include "../../ext/imgui/imgui_impl_dx11.h"
 #include "../../ext/minhook/MinHook.h"
+#include "../../ext/iconfont/IconsFontAwesome6.h"
+#include "../../ext/iconfont/fa_solid_900.h"
 
 #include "../../src/menu/Menu.h"
 #include "../../src/feature/visuals/Visuals.h"
@@ -14,6 +16,33 @@
 #include "../feature/misc/Misc.h"
 
 #pragma comment(lib, "d3d11.lib")
+
+static void LoadMenuFonts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    // Base font: ImGui's default proggy clean (compiled into imgui).
+    ImFontConfig baseCfg{};
+    baseCfg.SizePixels = 13.f;
+    io.Fonts->AddFontDefault(&baseCfg);
+
+    // Merge FontAwesome 6 Solid (subset) into the same atlas slot.
+    static const ImWchar faRanges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
+
+    ImFontConfig faCfg{};
+    faCfg.MergeMode = true;
+    faCfg.PixelSnapH = true;
+    faCfg.GlyphMinAdvanceX = 13.f;
+    faCfg.FontDataOwnedByAtlas = false;
+
+    io.Fonts->AddFontFromMemoryTTF(
+        (void*)IconFontData::FaSolid_data,
+        (int)IconFontData::FaSolid_size,
+        13.f, &faCfg, faRanges
+    );
+
+    io.Fonts->Build();
+}
 
 static ID3D11Device* g_Device = nullptr;
 static ID3D11DeviceContext* g_Context = nullptr;
@@ -27,10 +56,20 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 
 LRESULT __stdcall Hooks::hkWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    // Always feed ImGui so it tracks state correctly (don't gate by IsOpen).
+    ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
+
     if (Menu::IsOpen)
     {
-        ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
-        return true;
+        // Swallow input only — let the game keep handling paint/resize/destroy.
+        if ((msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) ||
+             msg == WM_MOUSEHOVER || msg == WM_MOUSELEAVE ||
+             msg == WM_KEYDOWN    || msg == WM_KEYUP      ||
+             msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP   ||
+             msg == WM_CHAR       || msg == WM_INPUT)
+        {
+            return TRUE;
+        }
     }
 
     return CallWindowProc(oWndProc, hWnd, msg, wParam, lParam);
@@ -62,10 +101,21 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
 
+        LoadMenuFonts();
+
         ImGui_ImplWin32_Init(g_Window);
         ImGui_ImplDX11_Init(g_Device, g_Context);
 
         g_Init = true;
+    }
+
+    // Force-show ImGui's software cursor while the menu is open so the
+    // game's hidden / clipped system cursor doesn't leave the user blind.
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        io.MouseDrawCursor = Menu::IsOpen;
+        if (Menu::IsOpen)
+            ClipCursor(nullptr);
     }
 
     EntityManager::Get().Update();
