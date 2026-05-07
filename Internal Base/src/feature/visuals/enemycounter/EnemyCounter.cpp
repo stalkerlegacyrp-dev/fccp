@@ -7,6 +7,9 @@
 
 void EnemyCounter::Render()
 {
+    if (!Globals::hud_enemy_counter)
+        return;
+
     auto& em = EntityManager::Get();
     C_CSPlayerPawn* local = em.GetLocalPawn();
     if (!local)
