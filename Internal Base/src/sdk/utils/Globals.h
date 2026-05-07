@@ -29,6 +29,9 @@ namespace Globals
 
     inline bool esp_health = true;
 
+    // HUD
+    inline bool hud_enemy_counter = true;
+
     // Aimbot (placeholder logic; settings persisted)
     inline bool aimbot_enabled = false;
     inline int  aimbot_bind = VK_MENU; // ALT

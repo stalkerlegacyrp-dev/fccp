@@ -499,6 +499,73 @@ static void RenderPlaceholderTab(const char* title, const char* hint)
     EndCard();
 }
 
+// Row helper: checkbox left, color chip right (color chip is optional)
+static void EspRow(const char* label, bool* enable, float color[4])
+{
+    W::Checkbox(label, enable);
+    if (color)
+    {
+        ImGui::SameLine();
+        RightAlignCursor(16.f);
+        char id[32];
+        snprintf(id, sizeof(id), "##c_%s", label);
+        W::ColorChip(id, color);
+    }
+}
+
+static void RenderEspCard(ImVec2 size)
+{
+    BeginCard("##esp_card", size);
+
+    W::SectionTitle("Player ESP");
+
+    // Enable + key bind chip
+    W::Checkbox("Enable ESP", &Globals::esp_enabled);
+    {
+        ImVec2 ts = ImGui::CalcTextSize(KeyName(Globals::esp_bind));
+        float chipW = MaxF(ts.x + 20.f, 60.f);
+        ImGui::SameLine();
+        RightAlignCursor(chipW);
+        BindRow("esp_bind", &Globals::esp_bind);
+    }
+
+    EspRow("Box",        &Globals::esp_box,      Globals::esp_box_color);
+    W::Slider("Box thickness", &Globals::esp_box_thickness, 0.5f, 4.f, "%.1f");
+
+    EspRow("Skeleton",   &Globals::esp_skeleton, Globals::esp_skeleton_color);
+    W::Slider("Skeleton thickness", &Globals::esp_skeleton_thickness, 0.5f, 4.f, "%.1f");
+
+    EspRow("Name",       &Globals::esp_name,     Globals::esp_name_color);
+    W::Checkbox("Health bar", &Globals::esp_health);
+
+    EndCard();
+}
+
+static void RenderHudCard(ImVec2 size)
+{
+    BeginCard("##hud_card", size);
+
+    W::SectionTitle("HUD");
+
+    W::Checkbox("Enemy counter", &Globals::hud_enemy_counter);
+
+    ImGui::Dummy({ 0, 4.f });
+    W::Muted("More HUD widgets coming soon.");
+
+    EndCard();
+}
+
+static void RenderPlayersTab()
+{
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    float gap = 12.f;
+    float colW = (avail.x - gap) * 0.5f;
+
+    RenderEspCard(ImVec2(colW, avail.y));
+    ImGui::SameLine(0.f, gap);
+    RenderHudCard(ImVec2(colW, avail.y));
+}
+
 // ---------------------------------------------------------------------------
 // Top-level Menu::Render
 // ---------------------------------------------------------------------------
@@ -552,7 +619,7 @@ void Menu::Render()
     switch (Globals::menu_tab)
     {
     case 0: RenderLegitBotTab(); break;
-    case 1: RenderPlaceholderTab("Players", "Per-player visuals will live here."); break;
+    case 1: RenderPlayersTab(); break;
     case 2: RenderPlaceholderTab("View", "View / camera tweaks will live here."); break;
     case 3: RenderPlaceholderTab("Main", "Bunnyhop, autostrafe and other misc."); break;
     case 4: RenderPlaceholderTab("Configs", "Save / load presets here."); break;
