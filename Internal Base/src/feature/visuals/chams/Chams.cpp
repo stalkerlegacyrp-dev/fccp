@@ -34,9 +34,9 @@ namespace
     };
 
     // Strict prologue for CAnimatableSceneObjectDesc::RenderObjects on
-    // recent builds. Loose alternates were removed in this patch
-    // because they generate false positives in arbitrary engine code,
-    // and a wrong target = guaranteed crash on first dispatch.
+    // recent builds. Loose alternates were removed because they generate
+    // false positives in arbitrary engine code, and a wrong target =
+    // guaranteed crash on first dispatch.
     constexpr const char* kRenderObjectsPattern =
         "48 8B C4 53 57 41 54 48 81 EC ?? ?? ?? ?? 49 63 F9 49";
 
@@ -47,7 +47,6 @@ namespace
     void* g_pWeaponMaterial = nullptr;
     void* g_pHandsMaterial  = nullptr;
 
-    bool  g_bMaterialsRequested = false;
     std::atomic<bool> g_bHookEnabled{ false };
 
     Chams::Diag g_Diag;
@@ -89,9 +88,6 @@ namespace
         return ChamsKind::None;
     }
 
-    // Cheap check: is `p` a committed, readable user-mode page?
-    // Uses VirtualQuery so a bad pointer in the detour body's switch
-    // branch can't crash the process; we just skip the entry instead.
     inline bool IsReadablePtr(const void* p, size_t bytes = 1)
     {
         if (!p) return false;
@@ -100,7 +96,6 @@ namespace
         if (mbi.State != MEM_COMMIT) return false;
         const DWORD prot = mbi.Protect & 0xFF;
         if (prot == PAGE_NOACCESS || (mbi.Protect & PAGE_GUARD)) return false;
-        // ensure the requested range stays inside the committed region
         const auto base = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
         const auto end  = base + mbi.RegionSize;
         const auto pa   = reinterpret_cast<uintptr_t>(p);
@@ -150,25 +145,29 @@ namespace
         OutputDebugStringA(buf);
     }
 
-    // SEH filter for the detour. Catches AVs and similar from wrong-
-    // target hooks, disables the hook so we don't keep firing into bad
-    // memory, and bumps a diagnostic counter.
-    LONG DetourSehFilter(EXCEPTION_POINTERS* ep)
+    LONG DetourSehFilter(EXCEPTION_POINTERS*)
     {
-        (void)ep;
         g_Diag.detour_seh_catches++;
         g_bHookEnabled.store(false, std::memory_order_release);
         DbgLog("[fccp][chams] detour SEH catch - hook auto-disabled\n");
         return EXCEPTION_EXECUTE_HANDLER;
     }
 
-    // Body of the detour, separated so the outer __try/__except wrapper
-    // doesn't have to deal with C++ object lifetime restrictions.
-    // Returns true if it ran to completion without faulting.
-    bool RunDetourBody(void* /*thisPtr*/,
-                       void* /*a2*/,
-                       CBaseSceneData* pData,
-                       int32_t count)
+    LONG InstallSehFilter(EXCEPTION_POINTERS*)
+    {
+        g_Diag.install_seh_catches++;
+        DbgLog("[fccp][chams] install SEH catch\n");
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    LONG MaterialSehFilter(EXCEPTION_POINTERS*)
+    {
+        g_Diag.material_seh_catches++;
+        DbgLog("[fccp][chams] material build SEH catch\n");
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    bool RunDetourBody(void*, void*, CBaseSceneData* pData, int32_t count)
     {
         const bool wantPlayer = Globals::chams_player_enabled && g_pPlayerMaterial;
         const bool wantWeapon = Globals::chams_weapon_enabled && g_pWeaponMaterial;
@@ -208,9 +207,6 @@ namespace
         return true;
     }
 
-    // The detour entrypoint. Hot path. We ALWAYS call the original
-    // afterwards so the engine still renders even if our body skipped
-    // (because the hook is disabled / args look invalid / SEH caught).
     void* __fastcall hkRenderObjects(
         void* thisPtr,
         void* a2,
@@ -230,15 +226,13 @@ namespace
             }
             __except (DetourSehFilter(GetExceptionInformation()))
             {
-                // Filter already disabled the hook + bumped counter.
+                // disabled by filter
             }
         }
 
         return g_pOriginalRenderObjects(thisPtr, a2, pData, count, a5, a6, a7);
     }
 
-    // Pattern-scan the candidate modules in order. Returns 0 if nothing
-    // matched. Updates `outModule` with which module hit.
     uintptr_t ScanRenderObjectsTarget(char outModule[32])
     {
         outModule[0] = 0;
@@ -258,59 +252,11 @@ namespace
         }
         return 0;
     }
-}
 
-namespace Chams
-{
-    void Probe()
+    // Body of TryInstall that may fault. Separated so the outer SEH
+    // wrapper doesn't need to deal with C++ object lifetime rules.
+    bool TryInstallImpl()
     {
-        // Module presence
-        g_Diag.mod_materialsystem2  = GetModuleHandleA("materialsystem2.dll")  != nullptr;
-        g_Diag.mod_tier0            = GetModuleHandleA("tier0.dll")            != nullptr;
-        g_Diag.mod_scenesystem      = GetModuleHandleA("scenesystem.dll")      != nullptr;
-        g_Diag.mod_client           = GetModuleHandleA("client.dll")           != nullptr;
-        g_Diag.mod_rendersystemdx11 = GetModuleHandleA("rendersystemdx11.dll") != nullptr;
-
-        // SDK side - pull MaterialSystem flags into g_Diag whether it
-        // succeeded or not so the menu can tell us where bringup died.
-        (void)MaterialSystem::Init();
-        const auto& s = MaterialSystem::GetStatus();
-        g_Diag.createinterface_export = s.createinterface_ok;
-        g_Diag.matsys_singleton       = s.singleton_ok;
-        g_Diag.tier0_loadkv3          = s.loadkv3_ok;
-        g_Diag.creatematerial_pattern = s.createmat_ok;
-
-        // Pattern scan (look-only). Don't touch addresses we already
-        // hooked - re-running scan after install is fine but writing
-        // through a stale g_pHookTarget would clobber the live target.
-        if (!IsInstalled())
-        {
-            char modName[32] = { 0 };
-            uintptr_t target = ScanRenderObjectsTarget(modName);
-            if (target)
-            {
-                g_Diag.renderobjects_pattern = true;
-                g_Diag.renderobjects_variant = 0;
-                std::memcpy(g_Diag.renderobjects_module, modName, sizeof(g_Diag.renderobjects_module));
-                g_Diag.hook_target_addr = target;
-            }
-            else
-            {
-                g_Diag.renderobjects_pattern = false;
-                g_Diag.hook_target_addr = 0;
-            }
-        }
-    }
-
-    bool TryInstall()
-    {
-        if (IsInstalled())
-            return true;
-
-        Probe();
-
-        g_Diag.hook_install_attempted = true;
-
         if (!g_Diag.creatematerial_pattern)
         {
             DbgLog("[fccp][chams] TryInstall: MaterialSystem not ready\n");
@@ -346,6 +292,89 @@ namespace Chams
         return true;
     }
 
+    // Body of per-category material creation that may fault. Separated
+    // for the same reason as TryInstallImpl.
+    void* CreateChamsMaterialImpl(const char* name)
+    {
+        return MaterialSystem::CreateChamsMaterial(name, kChamsKV3);
+    }
+
+    // Try to build a single chams material under SEH so a bad LoadKV3 /
+    // CreateMaterial address doesn't take down the game. Each category
+    // is built only on first frame after its checkbox is flipped on.
+    void* SafeBuildMaterial(const char* name)
+    {
+        void* result = nullptr;
+        __try
+        {
+            result = CreateChamsMaterialImpl(name);
+        }
+        __except (MaterialSehFilter(GetExceptionInformation()))
+        {
+            result = nullptr;
+        }
+        return result;
+    }
+}
+
+namespace Chams
+{
+    void Probe()
+    {
+        g_Diag.mod_materialsystem2  = GetModuleHandleA("materialsystem2.dll")  != nullptr;
+        g_Diag.mod_tier0            = GetModuleHandleA("tier0.dll")            != nullptr;
+        g_Diag.mod_scenesystem      = GetModuleHandleA("scenesystem.dll")      != nullptr;
+        g_Diag.mod_client           = GetModuleHandleA("client.dll")           != nullptr;
+        g_Diag.mod_rendersystemdx11 = GetModuleHandleA("rendersystemdx11.dll") != nullptr;
+
+        (void)MaterialSystem::Init();
+        const auto& s = MaterialSystem::GetStatus();
+        g_Diag.createinterface_export = s.createinterface_ok;
+        g_Diag.matsys_singleton       = s.singleton_ok;
+        g_Diag.tier0_loadkv3          = s.loadkv3_ok;
+        g_Diag.creatematerial_pattern = s.createmat_ok;
+
+        if (!IsInstalled())
+        {
+            char modName[32] = { 0 };
+            uintptr_t target = ScanRenderObjectsTarget(modName);
+            if (target)
+            {
+                g_Diag.renderobjects_pattern = true;
+                g_Diag.renderobjects_variant = 0;
+                std::memcpy(g_Diag.renderobjects_module, modName, sizeof(g_Diag.renderobjects_module));
+                g_Diag.hook_target_addr = target;
+            }
+            else
+            {
+                g_Diag.renderobjects_pattern = false;
+                g_Diag.hook_target_addr = 0;
+            }
+        }
+    }
+
+    bool TryInstall()
+    {
+        if (IsInstalled())
+            return true;
+
+        Probe();
+
+        g_Diag.hook_install_attempted = true;
+
+        bool ok = false;
+        __try
+        {
+            ok = TryInstallImpl();
+        }
+        __except (InstallSehFilter(GetExceptionInformation()))
+        {
+            ok = false;
+            g_bHookEnabled.store(false, std::memory_order_release);
+        }
+        return ok;
+    }
+
     void Uninstall()
     {
         g_bHookEnabled.store(false, std::memory_order_release);
@@ -364,11 +393,16 @@ namespace Chams
         g_pWeaponMaterial = nullptr;
         g_pHandsMaterial  = nullptr;
         g_pOriginalRenderObjects = nullptr;
-        g_bMaterialsRequested = false;
 
         g_Diag.material_player = false;
         g_Diag.material_weapon = false;
         g_Diag.material_hands  = false;
+
+        // Reset per-category attempted flags so the user can re-try a
+        // material build after uninstalling/reinstalling the hook.
+        g_Diag.material_player_attempted = false;
+        g_Diag.material_weapon_attempted = false;
+        g_Diag.material_hands_attempted  = false;
     }
 
     bool IsInstalled()
@@ -378,10 +412,6 @@ namespace Chams
 
     bool Init()
     {
-        // Compatibility shim: probe only. The detour is only ever
-        // installed by the explicit "Install hook" button - never on
-        // module load - because a wrong pattern match here used to
-        // crash the game on first scene render.
         Probe();
         return true;
     }
@@ -393,23 +423,36 @@ namespace Chams
 
     void OnNewFrame()
     {
-        // Cheap probe so the diag panel is live. No hook install here.
         Probe();
 
         if (!IsInstalled())
             return;
 
-        if (!g_bMaterialsRequested)
+        // Lazy, per-category material build. Each one is attempted at
+        // most once per Install/Uninstall cycle, and SEH-wrapped so a
+        // wrong CreateMaterial/LoadKV3 address can't take the game.
+        if (Globals::chams_player_enabled && !g_pPlayerMaterial && !g_Diag.material_player_attempted)
         {
-            g_bMaterialsRequested = true;
-            g_pPlayerMaterial = MaterialSystem::CreateChamsMaterial("fccp/chams_player", kChamsKV3);
-            g_pWeaponMaterial = MaterialSystem::CreateChamsMaterial("fccp/chams_weapon", kChamsKV3);
-            g_pHandsMaterial  = MaterialSystem::CreateChamsMaterial("fccp/chams_hands",  kChamsKV3);
+            g_Diag.material_player_attempted = true;
+            g_pPlayerMaterial = SafeBuildMaterial("fccp/chams_player");
             g_Diag.material_player = g_pPlayerMaterial != nullptr;
+            DbgLog("[fccp][chams] build Player material -> %p\n", g_pPlayerMaterial);
+        }
+
+        if (Globals::chams_weapon_enabled && !g_pWeaponMaterial && !g_Diag.material_weapon_attempted)
+        {
+            g_Diag.material_weapon_attempted = true;
+            g_pWeaponMaterial = SafeBuildMaterial("fccp/chams_weapon");
             g_Diag.material_weapon = g_pWeaponMaterial != nullptr;
-            g_Diag.material_hands  = g_pHandsMaterial  != nullptr;
-            DbgLog("[fccp][chams] materials: P=%d W=%d H=%d\n",
-                (int)g_Diag.material_player, (int)g_Diag.material_weapon, (int)g_Diag.material_hands);
+            DbgLog("[fccp][chams] build Weapon material -> %p\n", g_pWeaponMaterial);
+        }
+
+        if (Globals::chams_hands_enabled && !g_pHandsMaterial && !g_Diag.material_hands_attempted)
+        {
+            g_Diag.material_hands_attempted = true;
+            g_pHandsMaterial = SafeBuildMaterial("fccp/chams_hands");
+            g_Diag.material_hands = g_pHandsMaterial != nullptr;
+            DbgLog("[fccp][chams] build Hands material -> %p\n", g_pHandsMaterial);
         }
     }
 

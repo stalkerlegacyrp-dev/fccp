@@ -80,10 +80,20 @@ namespace Chams
         bool material_weapon = false;
         bool material_hands  = false;
 
+        // Per-category creation attempts. Set to true the first time we
+        // tried to build that material, even if it crashed or returned
+        // null. Used so we don't keep re-firing LoadKV3/CreateMaterial
+        // every frame on a permanently-broken pattern.
+        bool material_player_attempted = false;
+        bool material_weapon_attempted = false;
+        bool material_hands_attempted  = false;
+
         // Live counters (atomically updated from the hot path).
-        uint64_t calls_total        = 0;
-        uint64_t calls_overridden   = 0;
-        uint64_t detour_seh_catches = 0;
+        uint64_t calls_total          = 0;
+        uint64_t calls_overridden     = 0;
+        uint64_t detour_seh_catches   = 0;
+        uint64_t install_seh_catches  = 0;
+        uint64_t material_seh_catches = 0;
         uint32_t last_classified_player = 0;
         uint32_t last_classified_weapon = 0;
         uint32_t last_classified_hands  = 0;
