@@ -8,19 +8,26 @@
 // material handle, suitable to drop into CBaseSceneData::m_pMaterial.
 namespace MaterialSystem
 {
-    // Resolves CreateMaterial via pattern scan in materialsystem2.dll and
-    // GetProcAddress("?LoadKV3@@...") in tier0.dll. Returns false if either
-    // fails - chams will then no-op cleanly instead of crashing.
-    bool Init();
+    // Detailed bringup state for diagnostics. Populated by Init().
+    struct Status
+    {
+        bool      mod_materialsystem2 = false;
+        bool      mod_tier0           = false;
+        bool      createinterface_ok  = false;
+        bool      singleton_ok        = false;
+        bool      loadkv3_ok          = false;
+        bool      createmat_ok        = false;
+        uintptr_t createmat_addr      = 0;
+        int       createmat_variant   = -1;
+        // Mangled export name LoadKV3 was found under (NUL-terminated copy).
+        char      loadkv3_export[128] = { 0 };
+        bool      ready               = false;
+    };
 
-    // True after Init succeeded and both targets resolved.
-    bool IsReady();
+    bool         Init();
+    bool         IsReady();
+    const Status& GetStatus();
 
-    // Build a chams material from a textual KV3 vmat. The string must contain
-    // the full KV3 header (encoding/format GUIDs) plus the body. The returned
-    // handle is opaque - just store the pointer and assign it to
-    // CBaseSceneData::m_pMaterial (and m_pMaterial2) inside the hook.
-    //
-    // Returns nullptr on failure. Safe to call even if Init() failed.
+    // Build a chams material from a textual KV3 vmat. Returns nullptr on failure.
     void* CreateChamsMaterial(const char* name, const char* kv3Source);
 }

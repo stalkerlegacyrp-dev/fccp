@@ -6,6 +6,7 @@
 #include "../../ext/imgui/imgui.h"
 #include "../../ext/iconfont/IconsFontAwesome6.h"
 #include "../sdk/utils/Globals.h"
+#include "../feature/visuals/chams/Chams.h"
 #include <Windows.h>
 #include <cstdio>
 #include <cstring>
@@ -640,14 +641,95 @@ static void RenderHandsChamsCard(ImVec2 size)
     EndCard();
 }
 
+
+// ---------------------------------------------------------------------------
+// Chams diagnostics card. Shows the bringup state of the material-based
+// chams pipeline (module presence, pattern hits, material build status,
+// live hook-call counters) so the user can read off where bringup died
+// without attaching a debugger. Hidden once everything is green and at
+// least one frame has gone through the hook with at least one classified
+// scene-data of any category.
+// ---------------------------------------------------------------------------
+static void RenderChamsDiagCard(ImVec2 size)
+{
+    BeginCard("##chams_diag", size);
+
+    W::SectionTitle(ICON_FA_EYE "  Chams diagnostics");
+
+    const auto& d = Chams::GetDiag();
+
+    auto Pill = [](bool ok, const char* label) {
+        ImVec4 col = ok ? ImVec4(0.40f, 0.95f, 0.40f, 1.f)
+                        : ImVec4(0.95f, 0.40f, 0.40f, 1.f);
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        ImGui::TextUnformatted(ok ? "OK" : "--");
+        ImGui::PopStyleColor();
+        ImGui::SameLine(0.f, 6.f);
+        ImGui::TextUnformatted(label);
+    };
+
+    // Modules
+    Pill(d.mod_materialsystem2,  "materialsystem2.dll");   ImGui::SameLine(0.f, 14.f);
+    Pill(d.mod_tier0,            "tier0.dll");             ImGui::SameLine(0.f, 14.f);
+    Pill(d.mod_scenesystem,      "scenesystem.dll");
+    Pill(d.mod_rendersystemdx11, "rendersystemdx11.dll");  ImGui::SameLine(0.f, 14.f);
+    Pill(d.mod_client,           "client.dll");
+
+    // Resolution
+    Pill(d.matsys_singleton,       "VMaterialSystem2_001"); ImGui::SameLine(0.f, 14.f);
+    Pill(d.tier0_loadkv3,          "tier0!LoadKV3");
+    Pill(d.creatematerial_pattern, "CMaterialSystem2::CreateMaterial pat");
+    Pill(d.renderobjects_pattern,  "CAnimatableSceneObjectDesc::RenderObjects pat");
+
+    // If we got the hook, show where
+    if (d.renderobjects_pattern)
+    {
+        char buf[160];
+        _snprintf_s(buf, _TRUNCATE,
+                    "    in %s, variant %d, addr 0x%016llX",
+                    d.renderobjects_module, d.renderobjects_variant,
+                    (unsigned long long)d.hook_target_addr);
+        W::Muted(buf);
+    }
+
+    Pill(d.hook_created, "MH_CreateHook");  ImGui::SameLine(0.f, 14.f);
+    Pill(d.hook_enabled, "MH_EnableHook");
+
+    // Materials
+    Pill(d.material_player, "Player mat");  ImGui::SameLine(0.f, 14.f);
+    Pill(d.material_weapon, "Weapon mat");  ImGui::SameLine(0.f, 14.f);
+    Pill(d.material_hands,  "Hands mat");
+
+    // Live counters
+    char line[160];
+    _snprintf_s(line, _TRUNCATE,
+                "Hook calls: %llu   overrode: %llu",
+                (unsigned long long)d.calls_total,
+                (unsigned long long)d.calls_overridden);
+    W::Muted(line);
+    _snprintf_s(line, _TRUNCATE,
+                "Last frame classified: player=%u  weapon=%u  hands=%u",
+                d.last_classified_player, d.last_classified_weapon, d.last_classified_hands);
+    W::Muted(line);
+
+    EndCard();
+}
+
 static void RenderPlayersTab()
 {
     ImVec2 avail = ImGui::GetContentRegionAvail();
     float gap = 12.f;
-    float colW = (avail.x - gap) * 0.5f;
-    float rowH = (avail.y - gap) * 0.5f;
+    const float diagH = 200.f;
 
-    // Top row: ESP + Player Chams
+    // Top: full-width diagnostics strip.
+    RenderChamsDiagCard(ImVec2(avail.x, diagH));
+    ImGui::Dummy({ 0, gap });
+
+    float rest = avail.y - diagH - gap;
+    float colW = (avail.x - gap) * 0.5f;
+    float rowH = (rest - gap) * 0.5f;
+
+    // Middle row: ESP + Player Chams
     RenderEspCard(ImVec2(colW, rowH));
     ImGui::SameLine(0.f, gap);
     RenderPlayerChamsCard(ImVec2(colW, rowH));
@@ -655,18 +737,25 @@ static void RenderPlayersTab()
     ImGui::Dummy({ 0, gap });
 
     // Bottom row: HUD (single card spanning full width)
-    RenderHudCard(ImVec2(avail.x, avail.y - rowH - gap));
+    RenderHudCard(ImVec2(avail.x, rest - rowH - gap));
 }
 
 static void RenderViewTab()
 {
     ImVec2 avail = ImGui::GetContentRegionAvail();
     float gap = 12.f;
+    const float diagH = 200.f;
+
+    // Top: full-width diagnostics strip.
+    RenderChamsDiagCard(ImVec2(avail.x, diagH));
+    ImGui::Dummy({ 0, gap });
+
+    float rest = avail.y - diagH - gap;
     float colW = (avail.x - gap) * 0.5f;
 
-    RenderWeaponChamsCard(ImVec2(colW, avail.y));
+    RenderWeaponChamsCard(ImVec2(colW, rest));
     ImGui::SameLine(0.f, gap);
-    RenderHandsChamsCard(ImVec2(colW, avail.y));
+    RenderHandsChamsCard(ImVec2(colW, rest));
 }
 
 // ---------------------------------------------------------------------------

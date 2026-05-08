@@ -9,104 +9,184 @@
 #endif
 #include <Windows.h>
 #include <cstring>
+#include <cstdio>
 
 #include "../memory/PatternScan.h"
 
 namespace
 {
-    // tier0.dll exports LoadKV3 under its mangled MSVC name. Stable across
-    // CS2 builds (the function has not been renamed in over a year).
+    // tier0!LoadKV3 has been exported under several slightly different
+    // manglings across CS2 builds (CKeyValues3 vs KeyValues3, mostly).
+    // We resolve it by enumerating tier0's export directory and grabbing
+    // the first export that matches the prefix "?LoadKV3@".
     //
-    //   bool LoadKV3(CKeyValues3* out,
-    //                CUtlString*  errorOut,    // we pass nullptr
-    //                const char*  kv3Source,
-    //                const KV3ID_t& format,
-    //                const char*  context,     // we pass nullptr
-    //                unsigned     flags);      // we pass 0
+    // Function shape: bool LoadKV3(CKeyValues3* out,
+    //                              CUtlString*  errorOut,    // we pass nullptr
+    //                              const char*  kv3Source,
+    //                              const KV3ID_t& format,
+    //                              const char*  context,     // we pass nullptr
+    //                              unsigned     flags);      // we pass 0
     using TLoadKV3 = bool(__fastcall*)(CKeyValues3*, void*, const char*, const KV3ID_t&, const char*, unsigned);
 
     // CMaterialSystem2::CreateMaterial.
-    //
-    // The function is non-virtual and not exported, so we sig-scan it.
-    // Its prototype (from public CS2 SDK reverse engineering):
-    //
-    //   void CreateMaterial(IMaterialSystem2* this,
-    //                       void**       outHandle,    // out: opaque CStrongHandle slot
-    //                       const char*  name,
-    //                       CKeyValues3* kv,
-    //                       int          flagsA,       // typically 0
-    //                       int          flagsB);      // typically 1
-    //
-    // The first arg is `this`; we obtain it from the SceneSystem_002 /
-    // VMaterialSystem2_001 singleton via CreateInterface.
     using TCreateMaterial = void(__fastcall*)(void*, void**, const char*, CKeyValues3*, int, int);
 
-    // Pattern of the CreateMaterial prologue. Stable across recent builds;
-    // taken from PureLiquid-CS2-External (CS2/Include/CS2/Patterns.h).
-    // 4D 89 4C 24 ?? push regs / 4C 89 44 24 ?? movs followed by sub rsp, ?? ?? ?? ??
-    constexpr const char* kCreateMaterialPattern =
-        "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 81 EC ?? ?? ?? ?? 48 8B 05";
-
-    // CreateInterface wrapper for the materialsystem2 singleton. Each Source2
-    // module exports CreateInterface(name, returnCode) - we ask for
-    // VMaterialSystem2_001.
+    // CreateInterface wrapper.
     using TCreateInterface = void* (__cdecl*)(const char*, int*);
+
+    // -----------------------------------------------------------------
+    // Multiple patterns to try for CreateMaterial. The current build's
+    // prologue is unknown without tier0.dll / fresh dumps, so we keep a
+    // small ordered list of likely candidates and report which one (if
+    // any) matched.
+    // -----------------------------------------------------------------
+    struct PatternCandidate
+    {
+        const char* pat;
+        const char* note;
+    };
+
+    constexpr PatternCandidate kCreateMaterialPatterns[] = {
+        { "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 41 56 48 81 EC ?? ?? ?? ?? 48 8B 05",
+          "PureLiquid 2024" },
+        { "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 41 56 41 57 48 81 EC",
+          "alt regs" },
+        { "40 53 56 57 41 54 41 55 41 56 41 57 48 81 EC",
+          "fully-saved variant" },
+    };
 
     void*           g_pMaterialSystem = nullptr;
     TLoadKV3        g_pLoadKV3 = nullptr;
     TCreateMaterial g_pCreateMaterial = nullptr;
-    bool            g_bReady = false;
+    MaterialSystem::Status g_Status{};
+
+    // Walk a module's export directory and return the first export name
+    // whose ASCII prefix matches `prefix`. Returns nullptr if none.
+    // The returned pointer points into the module image - safe to read
+    // for the lifetime of the module.
+    const char* FindExportByPrefix(HMODULE mod, const char* prefix, FARPROC* outAddr)
+    {
+        if (!mod || !prefix) return nullptr;
+        auto base = reinterpret_cast<uint8_t*>(mod);
+
+        auto dos = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+        if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+
+        auto nt = reinterpret_cast<IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+        if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
+
+        auto& expDirEntry = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
+        if (!expDirEntry.VirtualAddress) return nullptr;
+
+        auto exp = reinterpret_cast<IMAGE_EXPORT_DIRECTORY*>(base + expDirEntry.VirtualAddress);
+        auto names = reinterpret_cast<DWORD*>(base + exp->AddressOfNames);
+        auto ords  = reinterpret_cast<WORD*>(base + exp->AddressOfNameOrdinals);
+        auto funcs = reinterpret_cast<DWORD*>(base + exp->AddressOfFunctions);
+
+        size_t prefLen = std::strlen(prefix);
+
+        for (DWORD i = 0; i < exp->NumberOfNames; ++i)
+        {
+            const char* name = reinterpret_cast<const char*>(base + names[i]);
+            if (std::strncmp(name, prefix, prefLen) == 0)
+            {
+                if (outAddr)
+                    *outAddr = reinterpret_cast<FARPROC>(base + funcs[ords[i]]);
+                return name;
+            }
+        }
+        return nullptr;
+    }
 }
 
 bool MaterialSystem::Init()
 {
-    if (g_bReady)
+    if (g_Status.ready)
         return true;
 
     HMODULE matSysMod = GetModuleHandleA("materialsystem2.dll");
     HMODULE tier0Mod  = GetModuleHandleA("tier0.dll");
+
+    g_Status.mod_materialsystem2 = matSysMod != nullptr;
+    g_Status.mod_tier0           = tier0Mod  != nullptr;
 
     if (!matSysMod || !tier0Mod)
         return false;
 
     auto matCreateIface = reinterpret_cast<TCreateInterface>(
         GetProcAddress(matSysMod, "CreateInterface"));
+    g_Status.createinterface_ok = matCreateIface != nullptr;
     if (!matCreateIface)
         return false;
 
     int rc = 0;
     g_pMaterialSystem = matCreateIface("VMaterialSystem2_001", &rc);
+    g_Status.singleton_ok = g_pMaterialSystem != nullptr;
     if (!g_pMaterialSystem)
         return false;
 
-    g_pLoadKV3 = reinterpret_cast<TLoadKV3>(
-        GetProcAddress(tier0Mod,
-            // ?LoadKV3@@YA_NPEAVKeyValues3@@PEAVCUtlString@@PEBDAEBUKV3ID_t@@2I@Z
-            "?LoadKV3@@YA_NPEAVKeyValues3@@PEAVCUtlString@@PEBDAEBUKV3ID_t@@2I@Z"));
+    // Resolve LoadKV3. Try the canonical mangled name first, then fall
+    // back to scanning tier0 exports for any "?LoadKV3@" prefix.
+    {
+        FARPROC kv3Addr = GetProcAddress(tier0Mod,
+            "?LoadKV3@@YA_NPEAVKeyValues3@@PEAVCUtlString@@PEBDAEBUKV3ID_t@@2I@Z");
+        if (kv3Addr)
+        {
+            std::strncpy(g_Status.loadkv3_export,
+                "?LoadKV3@@YA_NPEAVKeyValues3@@PEAVCUtlString@@PEBDAEBUKV3ID_t@@2I@Z",
+                sizeof(g_Status.loadkv3_export) - 1);
+            g_pLoadKV3 = reinterpret_cast<TLoadKV3>(kv3Addr);
+        }
+        else
+        {
+            FARPROC found = nullptr;
+            const char* name = FindExportByPrefix(tier0Mod, "?LoadKV3@", &found);
+            if (name && found)
+            {
+                std::strncpy(g_Status.loadkv3_export, name, sizeof(g_Status.loadkv3_export) - 1);
+                g_pLoadKV3 = reinterpret_cast<TLoadKV3>(found);
+            }
+        }
+    }
+    g_Status.loadkv3_ok = g_pLoadKV3 != nullptr;
     if (!g_pLoadKV3)
         return false;
 
-    uintptr_t createMat = Memory::PatternScan("materialsystem2.dll", kCreateMaterialPattern);
-    if (!createMat)
+    // Pattern scan CreateMaterial. Try each candidate in order.
+    for (int i = 0; i < (int)(sizeof(kCreateMaterialPatterns) / sizeof(kCreateMaterialPatterns[0])); ++i)
+    {
+        uintptr_t hit = Memory::PatternScan("materialsystem2.dll", kCreateMaterialPatterns[i].pat);
+        if (hit)
+        {
+            g_pCreateMaterial      = reinterpret_cast<TCreateMaterial>(hit);
+            g_Status.createmat_addr    = hit;
+            g_Status.createmat_variant = i;
+            g_Status.createmat_ok      = true;
+            break;
+        }
+    }
+    if (!g_Status.createmat_ok)
         return false;
 
-    g_pCreateMaterial = reinterpret_cast<TCreateMaterial>(createMat);
-    g_bReady = true;
+    g_Status.ready = true;
     return true;
 }
 
 bool MaterialSystem::IsReady()
 {
-    return g_bReady;
+    return g_Status.ready;
+}
+
+const MaterialSystem::Status& MaterialSystem::GetStatus()
+{
+    return g_Status;
 }
 
 void* MaterialSystem::CreateChamsMaterial(const char* name, const char* kv3Source)
 {
-    if (!g_bReady || !name || !kv3Source)
+    if (!g_Status.ready || !name || !kv3Source)
         return nullptr;
 
-    // LoadKV3 fully populates the outer KV3 object. We zero it first so any
-    // residual stack state doesn't trip the parser's "is initialised" checks.
     CKeyValues3 kv{};
     if (!g_pLoadKV3(&kv, nullptr, kv3Source, k_KV3Format_Generic, nullptr, 0u))
         return nullptr;
