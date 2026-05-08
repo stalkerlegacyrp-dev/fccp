@@ -542,61 +542,51 @@ static void RenderEspCard(ImVec2 size)
     EndCard();
 }
 
-static void RenderChamsTypeBlock(const char* visId, const char* invisId,
-    const char* visChipId, const char* invisChipId,
-    int* visType, int* invisType, float visColor[4], float invisColor[4])
+// ----- Chams stubs ---------------------------------------------------------
+//
+// Phase 1 strips the previous DX11 DrawIndexedInstanced chams because it
+// could not cleanly distinguish players from weapon skins / gloves / arms.
+// The replacement (Phase 2) will hook a high-level scene draw function and
+// filter by entity schema class name. Until then, these toggles only persist
+// settings - nothing is actually drawn over the geometry.
+// ---------------------------------------------------------------------------
+static void RenderStubFooter()
 {
-    static const char* chamsTypes[] = {
-        "Flat", "Shaded", "Neon", "Metallic", "Glow", "Wireframe"
-    };
+    ImGui::Dummy({ 0, 6.f });
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDisabled);
+    ImGui::TextUnformatted("(rendering not implemented yet)");
+    ImGui::PopStyleColor();
+}
+
+static void RenderPlayerChamsCard(ImVec2 size)
+{
+    BeginCard("##chams_player_card", size);
+
+    W::SectionTitle(ICON_FA_EYE "  Player Chams");
+    W::Muted("Enemies (C_CSPlayerPawn).");
+    ImGui::Dummy({ 0, 2.f });
+
+    W::Checkbox("Enable", &Globals::chams_player_enabled);
 
     ImGui::Dummy({ 0, 4.f });
     W::SubHeader("Visible");
-    W::Combo(visId, visType, chamsTypes, IM_ARRAYSIZE(chamsTypes));
     ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDim);
     ImGui::TextUnformatted("Color");
     ImGui::PopStyleColor();
     ImGui::SameLine();
     RightAlignCursor(16.f);
-    W::ColorChip(visChipId, visColor);
+    W::ColorChip("chams_pvis", Globals::chams_player_visible_color);
 
     ImGui::Dummy({ 0, 4.f });
     W::SubHeader("Invisible (XRay)");
-    W::Combo(invisId, invisType, chamsTypes, IM_ARRAYSIZE(chamsTypes));
     ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDim);
     ImGui::TextUnformatted("Color");
     ImGui::PopStyleColor();
     ImGui::SameLine();
     RightAlignCursor(16.f);
-    W::ColorChip(invisChipId, invisColor);
-}
+    W::ColorChip("chams_pinvis", Globals::chams_player_invisible_color);
 
-static void RenderChamsCard(ImVec2 size)
-{
-    BeginCard("##chams_card", size);
-
-    W::SectionTitle(ICON_FA_EYE "  Player Chams");
-    W::Checkbox("Enable", &Globals::chams_enabled);
-
-    RenderChamsTypeBlock("Type##pvis", "Type##pinvis",
-        "chams_pvis", "chams_pinvis",
-        &Globals::chams_visible_type, &Globals::chams_invisible_type,
-        Globals::chams_visible_color, Globals::chams_invisible_color);
-
-    EndCard();
-}
-
-static void RenderWorldChamsCard(ImVec2 size)
-{
-    BeginCard("##world_chams_card", size);
-
-    W::SectionTitle(ICON_FA_EYE "  World Chams");
-    W::Checkbox("Enable##world", &Globals::chams_world_enabled);
-
-    RenderChamsTypeBlock("Type##wvis", "Type##winvis",
-        "chams_wvis", "chams_winvis",
-        &Globals::chams_world_visible_type, &Globals::chams_world_invisible_type,
-        Globals::chams_world_visible_color, Globals::chams_world_invisible_color);
+    RenderStubFooter();
 
     EndCard();
 }
@@ -615,19 +605,48 @@ static void RenderHudCard(ImVec2 size)
     EndCard();
 }
 
-static void RenderViewChamsCard(ImVec2 size)
+static void RenderWeaponChamsCard(ImVec2 size)
 {
-    BeginCard("##view_chams_card", size);
+    BeginCard("##chams_weapon_card", size);
 
-    W::SectionTitle(ICON_FA_EYE "  Viewmodel Chams");
-    W::Muted("Hands, gloves, sleeves, lenses");
+    W::SectionTitle(ICON_FA_EYE "  Weapon Chams");
+    W::Muted("Self viewmodel weapon (C_CSWeaponBase).");
     ImGui::Dummy({ 0, 2.f });
-    W::Checkbox("Enable##view", &Globals::chams_view_enabled);
 
-    RenderChamsTypeBlock("Type##vvis", "Type##vinvis",
-        "chams_vvis", "chams_vinvis",
-        &Globals::chams_view_visible_type, &Globals::chams_view_invisible_type,
-        Globals::chams_view_visible_color, Globals::chams_view_invisible_color);
+    W::Checkbox("Enable##cweapon", &Globals::chams_weapon_enabled);
+
+    ImGui::Dummy({ 0, 4.f });
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDim);
+    ImGui::TextUnformatted("Color");
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    RightAlignCursor(16.f);
+    W::ColorChip("chams_weapon_col", Globals::chams_weapon_color);
+
+    RenderStubFooter();
+
+    EndCard();
+}
+
+static void RenderHandsChamsCard(ImVec2 size)
+{
+    BeginCard("##chams_hands_card", size);
+
+    W::SectionTitle(ICON_FA_EYE "  Hands Chams");
+    W::Muted("Self viewmodel arms (C_ViewmodelAttachmentModel).");
+    ImGui::Dummy({ 0, 2.f });
+
+    W::Checkbox("Enable##chands", &Globals::chams_hands_enabled);
+
+    ImGui::Dummy({ 0, 4.f });
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDim);
+    ImGui::TextUnformatted("Color");
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    RightAlignCursor(16.f);
+    W::ColorChip("chams_hands_col", Globals::chams_hands_color);
+
+    RenderStubFooter();
 
     EndCard();
 }
@@ -642,14 +661,12 @@ static void RenderPlayersTab()
     // Top row: ESP + Player Chams
     RenderEspCard(ImVec2(colW, rowH));
     ImGui::SameLine(0.f, gap);
-    RenderChamsCard(ImVec2(colW, rowH));
+    RenderPlayerChamsCard(ImVec2(colW, rowH));
 
     ImGui::Dummy({ 0, gap });
 
-    // Bottom row: HUD + World Chams
-    RenderHudCard(ImVec2(colW, avail.y - rowH - gap));
-    ImGui::SameLine(0.f, gap);
-    RenderWorldChamsCard(ImVec2(colW, avail.y - rowH - gap));
+    // Bottom row: HUD (single card spanning full width)
+    RenderHudCard(ImVec2(avail.x, avail.y - rowH - gap));
 }
 
 static void RenderViewTab()
@@ -658,7 +675,9 @@ static void RenderViewTab()
     float gap = 12.f;
     float colW = (avail.x - gap) * 0.5f;
 
-    RenderViewChamsCard(ImVec2(colW, avail.y));
+    RenderWeaponChamsCard(ImVec2(colW, avail.y));
+    ImGui::SameLine(0.f, gap);
+    RenderHandsChamsCard(ImVec2(colW, avail.y));
 }
 
 // ---------------------------------------------------------------------------
