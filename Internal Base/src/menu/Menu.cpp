@@ -692,8 +692,31 @@ static void RenderChamsDiagCard(ImVec2 size)
         W::Muted(buf);
     }
 
-    Pill(d.hook_created, "MH_CreateHook");  ImGui::SameLine(0.f, 14.f);
-    Pill(d.hook_enabled, "MH_EnableHook");
+    Pill(d.hook_install_attempted, "Install attempted");  ImGui::SameLine(0.f, 14.f);
+    Pill(d.hook_created,           "MH_CreateHook");      ImGui::SameLine(0.f, 14.f);
+    Pill(d.hook_enabled,           "MH_EnableHook");
+
+    // Install / Uninstall buttons. Hook is intentionally NOT auto-
+    // installed any more (a wrong-pattern match used to crash the
+    // game). User reads the diag, confirms the resolved address looks
+    // sensible, and only then enables.
+    {
+        const bool installed  = Chams::IsInstalled();
+        const bool canInstall = d.creatematerial_pattern && d.renderobjects_pattern;
+
+        if (!installed)
+        {
+            if (!canInstall) ImGui::BeginDisabled();
+            if (ImGui::Button("Install hook"))
+                Chams::TryInstall();
+            if (!canInstall) ImGui::EndDisabled();
+        }
+        else
+        {
+            if (ImGui::Button("Uninstall hook"))
+                Chams::Uninstall();
+        }
+    }
 
     // Materials
     Pill(d.material_player, "Player mat");  ImGui::SameLine(0.f, 14.f);
@@ -701,11 +724,12 @@ static void RenderChamsDiagCard(ImVec2 size)
     Pill(d.material_hands,  "Hands mat");
 
     // Live counters
-    char line[160];
+    char line[200];
     _snprintf_s(line, _TRUNCATE,
-                "Hook calls: %llu   overrode: %llu",
+                "Hook calls: %llu   overrode: %llu   SEH catches: %llu",
                 (unsigned long long)d.calls_total,
-                (unsigned long long)d.calls_overridden);
+                (unsigned long long)d.calls_overridden,
+                (unsigned long long)d.detour_seh_catches);
     W::Muted(line);
     _snprintf_s(line, _TRUNCATE,
                 "Last frame classified: player=%u  weapon=%u  hands=%u",

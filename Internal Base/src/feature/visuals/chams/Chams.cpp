@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdarg>
+#include <excpt.h>
 
 #include "../../../../ext/minhook/MinHook.h"
 
@@ -22,25 +23,22 @@
 
 namespace
 {
-    // Hook target lives in scenesystem.dll on older builds, but on current
-    // builds the SceneSystem_002 interface is registered by materialsystem2.dll
-    // so the implementation may live there instead. Try the scenesystem
-    // module first then fall back to the other engine modules that have
-    // historically held this code.
+    // Hook target lives in scenesystem.dll on older builds. On builds
+    // where SceneSystem_002 is registered by materialsystem2.dll the
+    // implementation typically lives there. We deliberately keep this
+    // list short and ordered by likelihood - matching a wrong function
+    // crashes the game, so we'd rather miss than guess.
     constexpr const char* kHookCandidateModules[] = {
         "scenesystem.dll",
         "materialsystem2.dll",
-        "rendersystemdx11.dll",
-        "client.dll",
     };
 
-    // Several prologue patterns to attempt for CAnimatableSceneObjectDesc::RenderObjects.
-    constexpr const char* kRenderObjectsPatterns[] = {
-        "48 8B C4 53 57 41 54 48 81 EC ?? ?? ?? ?? 49 63 F9 49",
-        "48 8B C4 53 57 41 54 48 81 EC ?? ?? ?? ??",
-        "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 41 56 41 57 48 81 EC ?? ?? ?? ??",
-        "40 53 56 57 41 54 41 55 41 56 41 57 48 81 EC ?? ?? ?? ?? 48 8B",
-    };
+    // Strict prologue for CAnimatableSceneObjectDesc::RenderObjects on
+    // recent builds. Loose alternates were removed in this patch
+    // because they generate false positives in arbitrary engine code,
+    // and a wrong target = guaranteed crash on first dispatch.
+    constexpr const char* kRenderObjectsPattern =
+        "48 8B C4 53 57 41 54 48 81 EC ?? ?? ?? ?? 49 63 F9 49";
 
     TRenderObjects g_pOriginalRenderObjects = nullptr;
     void*          g_pHookTarget = nullptr;
@@ -91,16 +89,37 @@ namespace
         return ChamsKind::None;
     }
 
+    // Cheap check: is `p` a committed, readable user-mode page?
+    // Uses VirtualQuery so a bad pointer in the detour body's switch
+    // branch can't crash the process; we just skip the entry instead.
+    inline bool IsReadablePtr(const void* p, size_t bytes = 1)
+    {
+        if (!p) return false;
+        MEMORY_BASIC_INFORMATION mbi{};
+        if (!VirtualQuery(p, &mbi, sizeof(mbi))) return false;
+        if (mbi.State != MEM_COMMIT) return false;
+        const DWORD prot = mbi.Protect & 0xFF;
+        if (prot == PAGE_NOACCESS || (mbi.Protect & PAGE_GUARD)) return false;
+        // ensure the requested range stays inside the committed region
+        const auto base = reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+        const auto end  = base + mbi.RegionSize;
+        const auto pa   = reinterpret_cast<uintptr_t>(p);
+        if (pa + bytes > end) return false;
+        return true;
+    }
+
     const char* GetModelPath(const CBaseSceneData* data) noexcept
     {
-        if (!data) return nullptr;
+        if (!IsReadablePtr(data, 0x10)) return nullptr;
         auto p1 = *reinterpret_cast<const uintptr_t*>(data);
-        if (!p1) return nullptr;
+        if (!IsReadablePtr(reinterpret_cast<const void*>(p1), 0x10)) return nullptr;
         auto p2 = *reinterpret_cast<const uintptr_t*>(p1 + 0x8);
-        if (!p2) return nullptr;
+        if (!IsReadablePtr(reinterpret_cast<const void*>(p2), 0x8)) return nullptr;
         auto p3 = *reinterpret_cast<const uintptr_t*>(p2);
-        if (!p3) return nullptr;
-        return *reinterpret_cast<const char* const*>(p3 + 0x8);
+        if (!IsReadablePtr(reinterpret_cast<const void*>(p3 + 0x8), 0x8)) return nullptr;
+        const char* str = *reinterpret_cast<const char* const*>(p3 + 0x8);
+        if (!IsReadablePtr(str, 1)) return nullptr;
+        return str;
     }
 
     inline uint8_t F2B(float f)
@@ -131,21 +150,26 @@ namespace
         OutputDebugStringA(buf);
     }
 
-    // The detour. Hot path. Increments live counters in g_Diag for the
-    // diagnostic UI even when nothing matches the classifier - the user
-    // can read off the panel whether the hook is firing at all.
-    void* __fastcall hkRenderObjects(
-        void* thisPtr,
-        void* a2,
-        CBaseSceneData* pData,
-        int32_t count,
-        void* a5, void* a6, void* a7)
+    // SEH filter for the detour. Catches AVs and similar from wrong-
+    // target hooks, disables the hook so we don't keep firing into bad
+    // memory, and bumps a diagnostic counter.
+    LONG DetourSehFilter(EXCEPTION_POINTERS* ep)
     {
-        g_Diag.calls_total++;
+        (void)ep;
+        g_Diag.detour_seh_catches++;
+        g_bHookEnabled.store(false, std::memory_order_release);
+        DbgLog("[fccp][chams] detour SEH catch - hook auto-disabled\n");
+        return EXCEPTION_EXECUTE_HANDLER;
+    }
 
-        if (!g_bHookEnabled.load(std::memory_order_relaxed) || !pData || count <= 0)
-            return g_pOriginalRenderObjects(thisPtr, a2, pData, count, a5, a6, a7);
-
+    // Body of the detour, separated so the outer __try/__except wrapper
+    // doesn't have to deal with C++ object lifetime restrictions.
+    // Returns true if it ran to completion without faulting.
+    bool RunDetourBody(void* /*thisPtr*/,
+                       void* /*a2*/,
+                       CBaseSceneData* pData,
+                       int32_t count)
+    {
         const bool wantPlayer = Globals::chams_player_enabled && g_pPlayerMaterial;
         const bool wantWeapon = Globals::chams_weapon_enabled && g_pWeaponMaterial;
         const bool wantHands  = Globals::chams_hands_enabled  && g_pHandsMaterial;
@@ -181,33 +205,55 @@ namespace
         g_Diag.last_classified_weapon = cW;
         g_Diag.last_classified_hands  = cH;
         if (overrode_any) g_Diag.calls_overridden++;
+        return true;
+    }
+
+    // The detour entrypoint. Hot path. We ALWAYS call the original
+    // afterwards so the engine still renders even if our body skipped
+    // (because the hook is disabled / args look invalid / SEH caught).
+    void* __fastcall hkRenderObjects(
+        void* thisPtr,
+        void* a2,
+        CBaseSceneData* pData,
+        int32_t count,
+        void* a5, void* a6, void* a7)
+    {
+        g_Diag.calls_total++;
+
+        if (g_bHookEnabled.load(std::memory_order_relaxed)
+            && pData && count > 0
+            && IsReadablePtr(pData, sizeof(CBaseSceneData)))
+        {
+            __try
+            {
+                RunDetourBody(thisPtr, a2, pData, count);
+            }
+            __except (DetourSehFilter(GetExceptionInformation()))
+            {
+                // Filter already disabled the hook + bumped counter.
+            }
+        }
 
         return g_pOriginalRenderObjects(thisPtr, a2, pData, count, a5, a6, a7);
     }
 
-    // Try every (module, pattern) combination. Returns 0 if nothing matched.
-    uintptr_t ResolveRenderObjectsTarget(int& outVariantIdx, char outModule[32])
+    // Pattern-scan the candidate modules in order. Returns 0 if nothing
+    // matched. Updates `outModule` with which module hit.
+    uintptr_t ScanRenderObjectsTarget(char outModule[32])
     {
-        outVariantIdx = -1;
         outModule[0] = 0;
-
         for (const char* mod : kHookCandidateModules)
         {
             if (!GetModuleHandleA(mod))
                 continue;
-            const int npat = (int)(sizeof(kRenderObjectsPatterns) / sizeof(kRenderObjectsPatterns[0]));
-            for (int v = 0; v < npat; ++v)
+            uintptr_t hit = Memory::PatternScan(mod, kRenderObjectsPattern);
+            if (hit)
             {
-                uintptr_t hit = Memory::PatternScan(mod, kRenderObjectsPatterns[v]);
-                if (hit)
-                {
-                    outVariantIdx = v;
-                    std::strncpy(outModule, mod, 31);
-                    outModule[31] = 0;
-                    DbgLog("[fccp][chams] RenderObjects hit in %s, variant %d, addr=0x%016llX\n",
-                        mod, v, (unsigned long long)hit);
-                    return hit;
-                }
+                std::strncpy(outModule, mod, 31);
+                outModule[31] = 0;
+                DbgLog("[fccp][chams] RenderObjects scan hit in %s, addr=0x%016llX\n",
+                    mod, (unsigned long long)hit);
+                return hit;
             }
         }
         return 0;
@@ -216,49 +262,74 @@ namespace
 
 namespace Chams
 {
-    bool Init()
+    void Probe()
     {
-        // Module presence is recorded every call so the menu can reflect
-        // the engine bringup state in real time.
+        // Module presence
         g_Diag.mod_materialsystem2  = GetModuleHandleA("materialsystem2.dll")  != nullptr;
         g_Diag.mod_tier0            = GetModuleHandleA("tier0.dll")            != nullptr;
         g_Diag.mod_scenesystem      = GetModuleHandleA("scenesystem.dll")      != nullptr;
         g_Diag.mod_client           = GetModuleHandleA("client.dll")           != nullptr;
         g_Diag.mod_rendersystemdx11 = GetModuleHandleA("rendersystemdx11.dll") != nullptr;
 
-        // SDK side - also pull MaterialSystem flags into g_Diag whether
-        // it succeeded or not so the menu can tell us where bringup died.
-        const bool matSysOK = MaterialSystem::Init();
+        // SDK side - pull MaterialSystem flags into g_Diag whether it
+        // succeeded or not so the menu can tell us where bringup died.
+        (void)MaterialSystem::Init();
         const auto& s = MaterialSystem::GetStatus();
         g_Diag.createinterface_export = s.createinterface_ok;
         g_Diag.matsys_singleton       = s.singleton_ok;
         g_Diag.tier0_loadkv3          = s.loadkv3_ok;
         g_Diag.creatematerial_pattern = s.createmat_ok;
-        if (!matSysOK)
-            return false;
 
-        // Pattern scan + hook install
-        int variant = -1;
-        char modName[32] = { 0 };
-        uintptr_t target = ResolveRenderObjectsTarget(variant, modName);
-        if (!target)
+        // Pattern scan (look-only). Don't touch addresses we already
+        // hooked - re-running scan after install is fine but writing
+        // through a stale g_pHookTarget would clobber the live target.
+        if (!IsInstalled())
         {
-            g_Diag.renderobjects_pattern = false;
+            char modName[32] = { 0 };
+            uintptr_t target = ScanRenderObjectsTarget(modName);
+            if (target)
+            {
+                g_Diag.renderobjects_pattern = true;
+                g_Diag.renderobjects_variant = 0;
+                std::memcpy(g_Diag.renderobjects_module, modName, sizeof(g_Diag.renderobjects_module));
+                g_Diag.hook_target_addr = target;
+            }
+            else
+            {
+                g_Diag.renderobjects_pattern = false;
+                g_Diag.hook_target_addr = 0;
+            }
+        }
+    }
+
+    bool TryInstall()
+    {
+        if (IsInstalled())
+            return true;
+
+        Probe();
+
+        g_Diag.hook_install_attempted = true;
+
+        if (!g_Diag.creatematerial_pattern)
+        {
+            DbgLog("[fccp][chams] TryInstall: MaterialSystem not ready\n");
+            return false;
+        }
+        if (!g_Diag.renderobjects_pattern || !g_Diag.hook_target_addr)
+        {
+            DbgLog("[fccp][chams] TryInstall: RenderObjects pattern not found\n");
             return false;
         }
 
-        g_Diag.renderobjects_pattern = true;
-        g_Diag.renderobjects_variant = variant;
-        std::memcpy(g_Diag.renderobjects_module, modName, sizeof(g_Diag.renderobjects_module));
-        g_Diag.hook_target_addr = target;
+        g_pHookTarget = reinterpret_cast<void*>(g_Diag.hook_target_addr);
 
-        g_pHookTarget = reinterpret_cast<void*>(target);
-
-        if (MH_CreateHook(g_pHookTarget,
-                          reinterpret_cast<void*>(&hkRenderObjects),
-                          reinterpret_cast<void**>(&g_pOriginalRenderObjects)) != MH_OK)
+        MH_STATUS mhc = MH_CreateHook(g_pHookTarget,
+                                      reinterpret_cast<void*>(&hkRenderObjects),
+                                      reinterpret_cast<void**>(&g_pOriginalRenderObjects));
+        if (mhc != MH_OK && mhc != MH_ERROR_ALREADY_CREATED)
         {
-            DbgLog("[fccp][chams] MH_CreateHook failed\n");
+            DbgLog("[fccp][chams] MH_CreateHook failed (%d)\n", (int)mhc);
             return false;
         }
         g_Diag.hook_created = true;
@@ -275,7 +346,7 @@ namespace Chams
         return true;
     }
 
-    void Shutdown()
+    void Uninstall()
     {
         g_bHookEnabled.store(false, std::memory_order_release);
 
@@ -286,22 +357,47 @@ namespace Chams
             g_pHookTarget = nullptr;
         }
 
+        g_Diag.hook_enabled = false;
+        g_Diag.hook_created = false;
+
         g_pPlayerMaterial = nullptr;
         g_pWeaponMaterial = nullptr;
         g_pHandsMaterial  = nullptr;
         g_pOriginalRenderObjects = nullptr;
         g_bMaterialsRequested = false;
+
+        g_Diag.material_player = false;
+        g_Diag.material_weapon = false;
+        g_Diag.material_hands  = false;
+    }
+
+    bool IsInstalled()
+    {
+        return g_bHookEnabled.load(std::memory_order_acquire);
+    }
+
+    bool Init()
+    {
+        // Compatibility shim: probe only. The detour is only ever
+        // installed by the explicit "Install hook" button - never on
+        // module load - because a wrong pattern match here used to
+        // crash the game on first scene render.
+        Probe();
+        return true;
+    }
+
+    void Shutdown()
+    {
+        Uninstall();
     }
 
     void OnNewFrame()
     {
-        if (!g_bHookEnabled.load(std::memory_order_acquire))
-        {
-            // Retry every frame until we either succeed or run out of
-            // patterns to try. Init is cheap and idempotent.
-            (void)Init();
+        // Cheap probe so the diag panel is live. No hook install here.
+        Probe();
+
+        if (!IsInstalled())
             return;
-        }
 
         if (!g_bMaterialsRequested)
         {
