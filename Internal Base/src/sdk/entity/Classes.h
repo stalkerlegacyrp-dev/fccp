@@ -5,7 +5,7 @@
 
 #define SCHEMA(type, name, offset) \
     type name() const { \
-        return *reinterpret_cast<const type*>(reinterpret_cast<uintptr_t>(this) + offset); \
+        return *reinterpret_cast<type*>(reinterpret_cast<uintptr_t>(this) + offset); \
     }
 
 class CGameSceneNode

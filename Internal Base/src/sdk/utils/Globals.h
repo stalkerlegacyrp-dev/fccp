@@ -61,4 +61,26 @@ namespace Globals
     inline bool rcs_enabled = false;
     inline float rcs_reduction = 0.5f;
     inline float rcs_calibration = 1.f;
+
+    // Chams — Player body
+    // Types: 0=Flat, 1=Shaded, 2=Neon, 3=Metallic, 4=Glow, 5=Wireframe
+    inline bool chams_enabled = false;
+    inline int  chams_visible_type = 1;   // Shaded
+    inline int  chams_invisible_type = 0; // Flat
+    inline float chams_visible_color[4] = { 0.f, 1.f, 0.f, 1.f };
+    inline float chams_invisible_color[4] = { 1.f, 0.4f, 0.f, 1.f };
+
+    // Chams — World (environment geometry caught by wide detection)
+    inline bool chams_world_enabled = false;
+    inline int  chams_world_visible_type = 0;   // Flat
+    inline int  chams_world_invisible_type = 0; // Flat
+    inline float chams_world_visible_color[4] = { 0.3f, 0.3f, 0.8f, 0.6f };
+    inline float chams_world_invisible_color[4] = { 0.2f, 0.2f, 0.5f, 0.4f };
+
+    // Chams — Viewmodel (hands, gloves, sleeves, lenses)
+    inline bool chams_view_enabled = false;
+    inline int  chams_view_visible_type = 2;   // Neon
+    inline int  chams_view_invisible_type = 0; // Flat
+    inline float chams_view_visible_color[4] = { 1.f, 0.f, 1.f, 1.f };
+    inline float chams_view_invisible_color[4] = { 0.5f, 0.f, 0.5f, 0.8f };
 }

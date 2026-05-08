@@ -1,1 +1,11 @@
-#pragma oncenamespace Combat{    // Mouse-injection / state-mutating features (aimbot, triggerbot, RCS).    // Called once per frame in Hooks::hkPresent before rendering.    void Run();    // Overlay drawing (FOV circles etc). Uses ImGui background draw list.    void Render();}
+#pragma once
+
+namespace Combat
+{
+    // Mouse-injection / state-mutating features (aimbot, triggerbot, RCS).
+    // Called once per frame in Hooks::hkPresent before rendering.
+    void Run();
+
+    // Overlay drawing (FOV circles etc). Uses ImGui background draw list.
+    void Render();
+}

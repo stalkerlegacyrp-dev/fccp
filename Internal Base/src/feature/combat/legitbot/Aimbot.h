@@ -1,1 +1,11 @@
-#pragma oncenamespace Aimbot{    // Picks a target, smoothly nudges the cursor toward it via SendInput.    // Runs every frame from Hooks::hkPresent.    void Run();    // Renders the FOV circle on the background draw list when enabled.    void DrawFov();}
+#pragma once
+
+namespace Aimbot
+{
+    // Picks a target, smoothly nudges the cursor toward it via SendInput.
+    // Runs every frame from Hooks::hkPresent.
+    void Run();
+
+    // Renders the FOV circle on the background draw list when enabled.
+    void DrawFov();
+}

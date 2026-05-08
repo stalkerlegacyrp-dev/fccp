@@ -15,6 +15,7 @@
 #include "../../src/sdk/memory/PatternScan.h"
 #include "../feature/misc/Misc.h"
 #include "../feature/combat/Combat.h"
+#include "../feature/visuals/chams/Chams.h"
 
 #pragma comment(lib, "d3d11.lib")
 
@@ -50,6 +51,7 @@ static ID3D11DeviceContext* g_Context = nullptr;
 static ID3D11RenderTargetView* g_RTV = nullptr;
 static HWND                     g_Window = nullptr;
 static bool                     g_Init = false;
+static bool                     g_ChamsInit = false;
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND, UINT, WPARAM, LPARAM
@@ -64,10 +66,10 @@ LRESULT __stdcall Hooks::hkWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lP
     {
         // Swallow input only — let the game keep handling paint/resize/destroy.
         if ((msg >= WM_MOUSEFIRST && msg <= WM_MOUSELAST) ||
-             msg == WM_MOUSEHOVER || msg == WM_MOUSELEAVE ||
-             msg == WM_KEYDOWN    || msg == WM_KEYUP      ||
-             msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP   ||
-             msg == WM_CHAR       || msg == WM_INPUT)
+            msg == WM_MOUSEHOVER || msg == WM_MOUSELEAVE ||
+            msg == WM_KEYDOWN || msg == WM_KEYUP ||
+            msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP ||
+            msg == WM_CHAR || msg == WM_INPUT)
         {
             return TRUE;
         }
@@ -110,6 +112,12 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
         g_Init = true;
     }
 
+    // Initialize chams once we have a valid D3D11 device/context
+    if (!g_ChamsInit && g_Device && g_Context)
+    {
+        g_ChamsInit = Chams::Init(g_Device, g_Context);
+    }
+
     // Force-show ImGui's software cursor while the menu is open so the
     // game's hidden / clipped system cursor doesn't leave the user blind.
     {
@@ -127,6 +135,9 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
             Globals::ScreenHeight = (int)sd.BufferDesc.Height;
         }
     }
+
+    // Reset per-frame chams state (DSV tracking for viewmodel detection)
+    Chams::OnNewFrame();
 
     EntityManager::Get().Update();
 
@@ -150,7 +161,7 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
         Menu::Render();
 
     Visuals::Render();
-	Misc::Render();
+    Misc::Render();
     Combat::Render();
 
     ImGui::Render();
@@ -212,7 +223,7 @@ void Hooks::Setup()
         void** vtable = *reinterpret_cast<void***>(sc);
         void* present = vtable[8];
 
-        MH_CreateHook(present, &hkPresent, reinterpret_cast<void**>(&oPresent));
+        MH_CreateHook(present, reinterpret_cast<void*>(&hkPresent), reinterpret_cast<void**>(&oPresent));
         MH_EnableHook(MH_ALL_HOOKS);
 
         sc->Release();
@@ -226,6 +237,8 @@ void Hooks::Setup()
 
 void Hooks::Destroy()
 {
+    Chams::Destroy();
+
     MH_DisableHook(MH_ALL_HOOKS);
     MH_Uninitialize();
 

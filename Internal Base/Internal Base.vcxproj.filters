@@ -96,6 +96,9 @@
     <ClCompile Include="src\feature\visuals\enemycounter\EnemyCounter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\feature\visuals\chams\chams.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\core\Hooks.h">
@@ -204,6 +207,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\feature\visuals\enemycounter\EnemyCounter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\feature\visuals\chams\chams.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

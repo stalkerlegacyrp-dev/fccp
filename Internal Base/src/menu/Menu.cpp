@@ -530,14 +530,73 @@ static void RenderEspCard(ImVec2 size)
         BindRow("esp_bind", &Globals::esp_bind);
     }
 
-    EspRow("Box",        &Globals::esp_box,      Globals::esp_box_color);
+    EspRow("Box", &Globals::esp_box, Globals::esp_box_color);
     W::Slider("Box thickness", &Globals::esp_box_thickness, 0.5f, 4.f, "%.1f");
 
-    EspRow("Skeleton",   &Globals::esp_skeleton, Globals::esp_skeleton_color);
+    EspRow("Skeleton", &Globals::esp_skeleton, Globals::esp_skeleton_color);
     W::Slider("Skeleton thickness", &Globals::esp_skeleton_thickness, 0.5f, 4.f, "%.1f");
 
-    EspRow("Name",       &Globals::esp_name,     Globals::esp_name_color);
+    EspRow("Name", &Globals::esp_name, Globals::esp_name_color);
     W::Checkbox("Health bar", &Globals::esp_health);
+
+    EndCard();
+}
+
+static void RenderChamsTypeBlock(const char* visId, const char* invisId,
+    const char* visChipId, const char* invisChipId,
+    int* visType, int* invisType, float visColor[4], float invisColor[4])
+{
+    static const char* chamsTypes[] = {
+        "Flat", "Shaded", "Neon", "Metallic", "Glow", "Wireframe"
+    };
+
+    ImGui::Dummy({ 0, 4.f });
+    W::SubHeader("Visible");
+    W::Combo(visId, visType, chamsTypes, IM_ARRAYSIZE(chamsTypes));
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDim);
+    ImGui::TextUnformatted("Color");
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    RightAlignCursor(16.f);
+    W::ColorChip(visChipId, visColor);
+
+    ImGui::Dummy({ 0, 4.f });
+    W::SubHeader("Invisible (XRay)");
+    W::Combo(invisId, invisType, chamsTypes, IM_ARRAYSIZE(chamsTypes));
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDim);
+    ImGui::TextUnformatted("Color");
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    RightAlignCursor(16.f);
+    W::ColorChip(invisChipId, invisColor);
+}
+
+static void RenderChamsCard(ImVec2 size)
+{
+    BeginCard("##chams_card", size);
+
+    W::SectionTitle(ICON_FA_EYE "  Player Chams");
+    W::Checkbox("Enable", &Globals::chams_enabled);
+
+    RenderChamsTypeBlock("Type##pvis", "Type##pinvis",
+        "chams_pvis", "chams_pinvis",
+        &Globals::chams_visible_type, &Globals::chams_invisible_type,
+        Globals::chams_visible_color, Globals::chams_invisible_color);
+
+    EndCard();
+}
+
+static void RenderWorldChamsCard(ImVec2 size)
+{
+    BeginCard("##world_chams_card", size);
+
+    W::SectionTitle(ICON_FA_EYE "  World Chams");
+    W::Checkbox("Enable##world", &Globals::chams_world_enabled);
+
+    RenderChamsTypeBlock("Type##wvis", "Type##winvis",
+        "chams_wvis", "chams_winvis",
+        &Globals::chams_world_visible_type, &Globals::chams_world_invisible_type,
+        Globals::chams_world_visible_color, Globals::chams_world_invisible_color);
 
     EndCard();
 }
@@ -556,15 +615,50 @@ static void RenderHudCard(ImVec2 size)
     EndCard();
 }
 
+static void RenderViewChamsCard(ImVec2 size)
+{
+    BeginCard("##view_chams_card", size);
+
+    W::SectionTitle(ICON_FA_EYE "  Viewmodel Chams");
+    W::Muted("Hands, gloves, sleeves, lenses");
+    ImGui::Dummy({ 0, 2.f });
+    W::Checkbox("Enable##view", &Globals::chams_view_enabled);
+
+    RenderChamsTypeBlock("Type##vvis", "Type##vinvis",
+        "chams_vvis", "chams_vinvis",
+        &Globals::chams_view_visible_type, &Globals::chams_view_invisible_type,
+        Globals::chams_view_visible_color, Globals::chams_view_invisible_color);
+
+    EndCard();
+}
+
 static void RenderPlayersTab()
 {
     ImVec2 avail = ImGui::GetContentRegionAvail();
     float gap = 12.f;
     float colW = (avail.x - gap) * 0.5f;
+    float rowH = (avail.y - gap) * 0.5f;
 
-    RenderEspCard(ImVec2(colW, avail.y));
+    // Top row: ESP + Player Chams
+    RenderEspCard(ImVec2(colW, rowH));
     ImGui::SameLine(0.f, gap);
-    RenderHudCard(ImVec2(colW, avail.y));
+    RenderChamsCard(ImVec2(colW, rowH));
+
+    ImGui::Dummy({ 0, gap });
+
+    // Bottom row: HUD + World Chams
+    RenderHudCard(ImVec2(colW, avail.y - rowH - gap));
+    ImGui::SameLine(0.f, gap);
+    RenderWorldChamsCard(ImVec2(colW, avail.y - rowH - gap));
+}
+
+static void RenderViewTab()
+{
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    float gap = 12.f;
+    float colW = (avail.x - gap) * 0.5f;
+
+    RenderViewChamsCard(ImVec2(colW, avail.y));
 }
 
 // ---------------------------------------------------------------------------
@@ -621,7 +715,7 @@ void Menu::Render()
     {
     case 0: RenderLegitBotTab(); break;
     case 1: RenderPlayersTab(); break;
-    case 2: RenderPlaceholderTab("View", "View / camera tweaks will live here."); break;
+    case 2: RenderViewTab(); break;
     case 3: RenderPlaceholderTab("Main", "Bunnyhop, autostrafe and other misc."); break;
     case 4: RenderPlaceholderTab("Configs", "Save / load presets here."); break;
     default: break;

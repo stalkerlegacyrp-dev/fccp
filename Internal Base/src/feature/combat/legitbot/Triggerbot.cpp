@@ -15,11 +15,11 @@
 
 namespace
 {
-    using clock_t = std::chrono::steady_clock;
+    using steady_clock = std::chrono::steady_clock;
 
     bool                       g_pendingFire = false;
-    clock_t::time_point        g_fireAt = {};
-    clock_t::time_point        g_lastShot = {};
+    steady_clock::time_point   g_fireAt = {};
+    steady_clock::time_point   g_lastShot = {};
 
     inline float Vfov_Deg(const float* m)
     {
@@ -58,7 +58,7 @@ namespace
             return correct
                 ? Utils::WorldToScreenViewport(world, out, Globals::ViewMatrix, vpX, vpY, vpW, vpH)
                 : Utils::WorldToScreen(world, out, Globals::ViewMatrix, w, h);
-        };
+            };
 
         for (const auto& ent : em.GetEntities())
         {
@@ -104,7 +104,7 @@ void Triggerbot::Run()
         return;
     }
 
-    const auto now = clock_t::now();
+    const auto now = steady_clock::now();
 
     if (g_pendingFire)
     {
@@ -123,7 +123,7 @@ void Triggerbot::Run()
         SendInput(1, &up, sizeof(up));
 
         g_pendingFire = false;
-        g_lastShot = clock_t::now();
+        g_lastShot = steady_clock::now();
         return;
     }
 
