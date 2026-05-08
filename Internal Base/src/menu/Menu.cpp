@@ -542,7 +542,7 @@ static void RenderEspCard(ImVec2 size)
     EndCard();
 }
 
-// ----- Chams stubs ---------------------------------------------------------
+// ----- Chams cards ---------------------------------------------------------
 //
 // Phase 1 strips the previous DX11 DrawIndexedInstanced chams because it
 // could not cleanly distinguish players from weapon skins / gloves / arms.
@@ -550,14 +550,6 @@ static void RenderEspCard(ImVec2 size)
 // filter by entity schema class name. Until then, these toggles only persist
 // settings - nothing is actually drawn over the geometry.
 // ---------------------------------------------------------------------------
-static void RenderStubFooter()
-{
-    ImGui::Dummy({ 0, 6.f });
-    ImGui::PushStyleColor(ImGuiCol_Text, Theme::TextDisabled);
-    ImGui::TextUnformatted("(rendering not implemented yet)");
-    ImGui::PopStyleColor();
-}
-
 static void RenderPlayerChamsCard(ImVec2 size)
 {
     BeginCard("##chams_player_card", size);
@@ -586,7 +578,6 @@ static void RenderPlayerChamsCard(ImVec2 size)
     RightAlignCursor(16.f);
     W::ColorChip("chams_pinvis", Globals::chams_player_invisible_color);
 
-    RenderStubFooter();
 
     EndCard();
 }
@@ -623,7 +614,6 @@ static void RenderWeaponChamsCard(ImVec2 size)
     RightAlignCursor(16.f);
     W::ColorChip("chams_weapon_col", Globals::chams_weapon_color);
 
-    RenderStubFooter();
 
     EndCard();
 }
@@ -646,7 +636,6 @@ static void RenderHandsChamsCard(ImVec2 size)
     RightAlignCursor(16.f);
     W::ColorChip("chams_hands_col", Globals::chams_hands_color);
 
-    RenderStubFooter();
 
     EndCard();
 }

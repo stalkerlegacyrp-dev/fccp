@@ -15,6 +15,7 @@
 #include "../../src/sdk/memory/PatternScan.h"
 #include "../feature/misc/Misc.h"
 #include "../feature/combat/Combat.h"
+#include "../feature/visuals/chams/Chams.h"
 
 #pragma comment(lib, "d3d11.lib")
 
@@ -130,6 +131,8 @@ HRESULT __stdcall Hooks::hkPresent(IDXGISwapChain* swapChain, UINT sync, UINT fl
 
     EntityManager::Get().Update();
 
+    Chams::OnNewFrame();
+
     uintptr_t client = Memory::GetModuleBase("client.dll");
     memcpy(
         &Globals::ViewMatrix,
@@ -215,6 +218,11 @@ void Hooks::Setup()
         MH_CreateHook(present, reinterpret_cast<void*>(&hkPresent), reinterpret_cast<void**>(&oPresent));
         MH_EnableHook(MH_ALL_HOOKS);
 
+        // Chams::Init() pattern-scans scenesystem.dll. If the module is not
+        // mapped yet (early injection) it returns false here; OnNewFrame()
+        // will retry every frame until the engine has loaded it.
+        Chams::Init();
+
         sc->Release();
         dev->Release();
         ctx->Release();
@@ -226,6 +234,8 @@ void Hooks::Setup()
 
 void Hooks::Destroy()
 {
+    Chams::Shutdown();
+
     MH_DisableHook(MH_ALL_HOOKS);
     MH_Uninitialize();
 

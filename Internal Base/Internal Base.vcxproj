@@ -37,6 +37,8 @@
     <ClCompile Include="src\feature\combat\legitbot\Triggerbot.cpp" />
     <ClCompile Include="src\feature\combat\legitbot\RCS.cpp" />
     <ClCompile Include="src\feature\combat\Combat.cpp" />
+    <ClCompile Include="src\feature\visuals\chams\Chams.cpp" />
+    <ClCompile Include="src\sdk\source2\MaterialSystem.cpp" />
     <ClCompile Include="src\feature\misc\bhop\Bhop.cpp" />
     <ClCompile Include="src\feature\misc\bhop\Bhop.h" />
     <ClCompile Include="src\feature\misc\Misc.cpp" />
@@ -68,6 +70,11 @@
     <ClInclude Include="ext\minhook\trampoline.h" />
     <ClInclude Include="src\core\Hooks.h" />
     <ClInclude Include="src\feature\combat\Combat.h" />
+    <ClInclude Include="src\feature\visuals\chams\Chams.h" />
+    <ClInclude Include="src\sdk\source2\CBaseHandle.h" />
+    <ClInclude Include="src\sdk\source2\KeyValues3.h" />
+    <ClInclude Include="src\sdk\source2\SceneObject.h" />
+    <ClInclude Include="src\sdk\source2\MaterialSystem.h" />
     <ClInclude Include="src\feature\combat\legitbot\Aimbot.h" />
     <ClInclude Include="src\feature\combat\legitbot\Triggerbot.h" />
     <ClInclude Include="src\feature\combat\legitbot\RCS.h" />
