@@ -724,12 +724,17 @@ static void RenderChamsDiagCard(ImVec2 size)
     Pill(d.material_hands,  "Hands mat");
 
     // Live counters
-    char line[200];
+    char line[220];
     _snprintf_s(line, _TRUNCATE,
-                "Hook calls: %llu   overrode: %llu   SEH catches: %llu",
+                "Hook calls: %llu   overrode: %llu",
                 (unsigned long long)d.calls_total,
-                (unsigned long long)d.calls_overridden,
-                (unsigned long long)d.detour_seh_catches);
+                (unsigned long long)d.calls_overridden);
+    W::Muted(line);
+    _snprintf_s(line, _TRUNCATE,
+                "SEH: detour=%llu  install=%llu  material=%llu",
+                (unsigned long long)d.detour_seh_catches,
+                (unsigned long long)d.install_seh_catches,
+                (unsigned long long)d.material_seh_catches);
     W::Muted(line);
     _snprintf_s(line, _TRUNCATE,
                 "Last frame classified: player=%u  weapon=%u  hands=%u",
