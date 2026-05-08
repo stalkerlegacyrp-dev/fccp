@@ -62,25 +62,30 @@ namespace Globals
     inline float rcs_reduction = 0.5f;
     inline float rcs_calibration = 1.f;
 
-    // Chams — Player body
-    // Types: 0=Flat, 1=Shaded, 2=Neon, 3=Metallic, 4=Glow, 5=Wireframe
-    inline bool chams_enabled = false;
-    inline int  chams_visible_type = 1;   // Shaded
-    inline int  chams_invisible_type = 0; // Flat
-    inline float chams_visible_color[4] = { 0.f, 1.f, 0.f, 1.f };
-    inline float chams_invisible_color[4] = { 1.f, 0.4f, 0.f, 1.f };
+    // -----------------------------------------------------------------
+    // Chams settings (stub - rendering not implemented yet).
+    //
+    // The previous DX11 DrawIndexedInstanced approach is removed
+    // because it could not cleanly distinguish between players /
+    // weapon skins / gloves / arms (it tinted everything that matched
+    // the player vertex layout). The replacement will be a material
+    // based hook (CSceneSystem::DrawSceneObject or
+    // CAnimatableSceneObject::generate_primitives) that filters by
+    // the entity's schema class name. Until then these toggles do
+    // nothing - the menu shows them so the future implementation has
+    // a stable settings surface.
+    // -----------------------------------------------------------------
 
-    // Chams — World (environment geometry caught by wide detection)
-    inline bool chams_world_enabled = false;
-    inline int  chams_world_visible_type = 0;   // Flat
-    inline int  chams_world_invisible_type = 0; // Flat
-    inline float chams_world_visible_color[4] = { 0.3f, 0.3f, 0.8f, 0.6f };
-    inline float chams_world_invisible_color[4] = { 0.2f, 0.2f, 0.5f, 0.4f };
+    // Player Chams (enemies)
+    inline bool  chams_player_enabled            = false;
+    inline float chams_player_visible_color[4]   = { 0.f, 1.f, 0.f, 1.f };
+    inline float chams_player_invisible_color[4] = { 1.f, 0.4f, 0.f, 1.f };
 
-    // Chams — Viewmodel (hands, gloves, sleeves, lenses)
-    inline bool chams_view_enabled = false;
-    inline int  chams_view_visible_type = 2;   // Neon
-    inline int  chams_view_invisible_type = 0; // Flat
-    inline float chams_view_visible_color[4] = { 1.f, 0.f, 1.f, 1.f };
-    inline float chams_view_invisible_color[4] = { 0.5f, 0.f, 0.5f, 0.8f };
+    // Weapon Chams (self viewmodel weapon - C_CSWeaponBase{Gun,Knife,...})
+    inline bool  chams_weapon_enabled = false;
+    inline float chams_weapon_color[4] = { 0.7f, 0.7f, 0.9f, 1.f };
+
+    // Hands Chams (self viewmodel arms - C_ViewmodelAttachmentModel)
+    inline bool  chams_hands_enabled = false;
+    inline float chams_hands_color[4] = { 1.f, 0.85f, 0.7f, 1.f };
 }
