@@ -36,6 +36,12 @@
     <ClCompile Include="src\feature\combat\Combat.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\feature\visuals\chams\Chams.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\sdk\source2\MaterialSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\menu\Menu.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -117,6 +123,21 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\feature\combat\Combat.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\feature\visuals\chams\Chams.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sdk\source2\CBaseHandle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sdk\source2\KeyValues3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sdk\source2\SceneObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\sdk\source2\MaterialSystem.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\feature\misc\Misc.h">

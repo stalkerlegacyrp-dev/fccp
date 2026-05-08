@@ -63,17 +63,13 @@ namespace Globals
     inline float rcs_calibration = 1.f;
 
     // -----------------------------------------------------------------
-    // Chams settings (stub - rendering not implemented yet).
+    // Chams (material-based, hook on CAnimatableSceneObjectDesc::RenderObjects
+    // in scenesystem.dll, classification by model path - see Chams.cpp).
     //
-    // The previous DX11 DrawIndexedInstanced approach is removed
-    // because it could not cleanly distinguish between players /
-    // weapon skins / gloves / arms (it tinted everything that matched
-    // the player vertex layout). The replacement will be a material
-    // based hook (CSceneSystem::DrawSceneObject or
-    // CAnimatableSceneObject::generate_primitives) that filters by
-    // the entity's schema class name. Until then these toggles do
-    // nothing - the menu shows them so the future implementation has
-    // a stable settings surface.
+    // Filtering precedence: hands > weapon > player. The "visible color"
+    // pair on chams_player_* is left in for a future visibility check;
+    // currently only chams_player_visible_color is applied because we
+    // don't yet have an LOS trace.
     // -----------------------------------------------------------------
 
     // Player Chams (enemies)
